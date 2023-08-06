@@ -1,0 +1,73 @@
+version: '3.4'
+
+services:
+  traefik:
+    image: traefik:v2.5
+    container_name: traefik
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./traefik:/etc/traefik
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ssl_certs:/etc/traefik/certs/acme.json
+    restart: unless-stopped
+
+  mariadb:
+    image: mariadb
+    container_name: mariadb
+    restart: unless-stopped
+    env_file:
+      - .env.mariadb
+    volumes:
+      - mariadb_data:/var/lib/mysql
+
+  mongodb:
+    image: mongo
+    container_name: mongodb
+    restart: unless-stopped
+    env_file:
+      - .env.mongodb
+    volumes:
+      - mongo_data:/data/db
+
+  queue-cluster:
+    depends_on:
+      - mongodb
+      - mariadb
+    build:
+      target: queue-cluster
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.app
+
+  app:
+    depends_on:
+      - mongodb
+      - mariadb
+    build:
+      target: app
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/app
+    env_file:
+      - .env.app
+    links:
+      - mariadb
+      
+  portainer:
+    image: portainer/portainer-ce
+    container_name: portainer
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+      
+volumes:
+  mariadb_data:
+  ssl_certs:
+  mongo_data:
+  portainer_data:
