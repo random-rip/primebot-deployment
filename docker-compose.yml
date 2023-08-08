@@ -2,7 +2,7 @@ version: '3.4'
 
 services:
   traefik:
-    image: traefik:v2.5
+    image: traefik:v2.10
     container_name: traefik
     ports:
       - 80:80
@@ -10,7 +10,6 @@ services:
     volumes:
       - ./traefik:/etc/traefik
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ssl_certs:/etc/traefik/certs/acme.json
     restart: unless-stopped
 
   mariadb:
@@ -19,6 +18,10 @@ services:
     restart: unless-stopped
     env_file:
       - .env.mariadb
+    environment:
+      MYSQL_DATABASE: $DB_NAME
+      MYSQL_USER: $DB_USER
+      MYSQL_PASSWORD: $DB_PASSWORD
     volumes:
       - mariadb_data:/var/lib/mysql
 
@@ -26,48 +29,59 @@ services:
     image: mongo
     container_name: mongodb
     restart: unless-stopped
-    env_file:
-      - .env.mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: $MONGODB_USERNAME
+      MONGO_INITDB_ROOT_PASSWORD: $MONGODB_PASSWORD
     volumes:
       - mongo_data:/data/db
-
-  queue-cluster:
-    depends_on:
-      - mongodb
-      - mariadb
-    build:
-      target: queue-cluster
-      context: .
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    env_file:
-      - .env.app
 
   app:
     depends_on:
       - mongodb
       - mariadb
-    build:
-      target: app
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - .:/app
+    image: primebot_backend-app:latest
     env_file:
-      - .env.app
-    links:
+      - .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.entrypoints=websecure"
+      - "traefik.http.routers.app.rule=Host(`api.robinmoerlin.de`)"
+      - "traefik.http.services.app.loadbalancer.server.port=8000"    
+      - "traefik.http.routers.app.tls=true"
+      - "traefik.http.routers.app.tls.certresolver=staging" 
+  
+  queue-cluster:
+    depends_on:
+      - mongodb
       - mariadb
-      
+    image: primebot_backend-queue-cluster:latest 
+    env_file:
+      - .env
+
+  discord-bot:
+    depends_on:
+      - mariadb
+      - mongodb
+    image: primebot_backend-discord-bot:latest
+    env_file:
+      - .env
+
   portainer:
     image: portainer/portainer-ce
     container_name: portainer
     restart: unless-stopped
+    labels: 
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.entrypoints=websecure"
+      - "traefik.http.routers.portainer.rule=Host(`portainer.robinmoerlin.de`)"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+      - "traefik.http.routers.portainer.tls=true"
+      - "traefik.http.routers.portainer.tls.certresolver=staging"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
       
 volumes:
   mariadb_data:
-  ssl_certs:
   mongo_data:
   portainer_data:
