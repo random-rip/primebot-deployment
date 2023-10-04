@@ -86,3 +86,4 @@ volumes:
 #  mariadb_data:
 #  mongo_data:
   portainer_data:
+  certs:
